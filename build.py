@@ -8,8 +8,8 @@ def runCmd(cmd):
 		print("Command failed: ", cmd)
 		sys.exit()	
 
-def log(l):
-	print(">>> ", l)
+def log(msg):
+	print(">>> ", msg)
 
 
 log("Building")
@@ -21,4 +21,4 @@ else:
 	runCmd("npm run package-mac")
 
 log("Packaging...")
-shutil.make_archive("rtptool", "zip", "release-builds")Т
+shutil.make_archive("rtptool", "zip", "release-builds")
