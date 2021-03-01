@@ -1,0 +1,22 @@
+{
+  "name": "electron_hw",
+  "version": "1.0.0",
+  "description": "electron hello world",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "package-mac": "electron-packager . --overwrite --platform=darwin --arch=x64 --icon=assets/icons/mac/icon.icns --prune=true --out=release-builds",
+    "package-win": "electron-packager . rtptool --overwrite --asar --platform=win32 --arch=x64 --prune=true --out=release-builds --version-string.ProductName=\"RTPTool\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^11.2.3",
+    "electron-packager": "^15.2.0"
+  },
+  "dependencies": {
+    "jquery": "^3.5.1",
+    "materialize-css": "^1.0.0"
+  }
+}

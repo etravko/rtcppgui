@@ -1,0 +1,221 @@
+<!DOCTYPE html> 
+<html> 
+   <head> 
+      <meta charset = "UTF-8"> 
+      <title>RTP dump helper</title> 
+
+      <!--<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.100.2/css/materialize.min.css">-->
+      <link rel="stylesheet" href="node_modules/materialize-css/dist/css/materialize.min.css">
+   </head> 
+   
+   <body> 
+
+      <div class="container">
+         <h5 class="row"><b>① Select rtpdump file</b></h5>
+         
+         <div class="row">
+            <button id="buttonSelectFile" class="btn waves-effect purple">Open file</button>
+            <span id="textSelectFile"></span>
+         </div>
+
+         <h5 class="row"><b>② What do you want to change?</b></h5>
+
+         <div id="rtpDumpCfg" class="row"></div>
+
+         <h5 class="row"><b>③ Process</b></h5>
+
+         <div class="row">
+            <button id="buttonProcess" class="btn waves-effect purple disabled">Do it!</button>
+            <span id="textProcess"></span>
+         </div>
+
+      </div>
+
+      <script>    
+         const path = require('path')     
+         const {ipcRenderer} = require('electron') 
+         window.$ = window.jQuery = require('jquery');
+
+         let TCfg = {};
+
+         $(document).ready( () => {
+
+            $("#buttonSelectFile").click(function(event) {
+               resetPageState();
+               $("#buttonSelectFile").addClass("disabled");
+               setFileSelectMsg("processing...");
+               
+               ipcRenderer.send('eventSelectFile', null);                             
+             });
+
+            $("#buttonProcess").click(function(event) {
+               $("#buttonProcess").addClass("disabled");
+               setProcessMsg("processing...");
+               ipcRenderer.send('eventProcessFile', TCfg);                             
+             });
+
+         });
+
+         ipcRenderer.on('eventFileSelected', (event, data) => {
+            $("#buttonSelectFile").removeClass("disabled");
+
+            if (data === null) {
+               setFileSelectMsg(buildMsg("", true));
+            } else if (data.hasOwnProperty('error')) {
+               setFileSelectMsg(buildMsg(data.error, true));
+            } else if (data.hasOwnProperty('analyze') && (data.analyze.length > 0)) {
+               TCfg = data;
+               addTable(data.analyze);
+               setFileSelectMsg(buildMsg(path.join(data.filePath, data.fileName)));
+               $("#buttonProcess").removeClass("disabled");
+            } else {
+               setFileSelectMsg(buildMsg("internal fail", true));
+            }
+         })
+
+         ipcRenderer.on('eventFileProcessed', (event, data) => {
+            $("#buttonProcess").removeClass("disabled");
+
+            if (data === null) {
+               setProcessMsg(buildMsg("", true));
+            } else if (data.hasOwnProperty('error')) {
+               setProcessMsg(buildMsg(data.error, true));
+            } else if (data.hasOwnProperty('outFileName')){
+               setProcessMsg(buildMsg(path.join(data.filePath, data.outFileName)));
+            } else {
+               setProcessMsg(buildMsg("internal fail", true));
+            }
+         })
+
+         function addTable(analyze) {
+            let cfg = JSON.parse(analyze);
+            let callbacks = [];
+            TCfg.streamsCfg = {}
+            StreamsCfg = TCfg.streamsCfg;
+
+            let addRow = (tbl, name, value, editable) => {
+              let row = $('<tr></tr>');
+              row.append($('<td></td>').html(name));
+              if (editable.length > 0) {
+                  row.append($('<td></td>').html(value));
+                  // style="padding-bottom: 0px; padding-top: 0px"
+                  row.append($('<td></td>').html(editable));
+              }
+              else {
+                  row.append($('<td colspan="2"></td>').html(value));
+              }
+
+              tbl.append(row);
+            }
+
+            let getCfg = (streamId) => {
+              if (!(streamId in StreamsCfg)) {
+                  StreamsCfg[streamId] = {}
+              }
+              return StreamsCfg[streamId]
+            }
+
+            let table = $('<table class="highlight col s10"/>');
+            addRow(table, '<b>Total packets</b>', cfg.totalPackets, '');
+
+            // add stream info
+            for (let i = 0; i < cfg.streams.length; ++i) {
+              const streamId = cfg.streams[i].uid;
+
+              addRow(table, '<b>Stream #' + i + '</b>', parseInt(cfg.streams[i].ssrc).toString(16), '')
+
+              const ptInputId = 'stream' + i + 'payloadtype';
+              addRow(table, 'Payload type', cfg.streams[i].pt,
+                  '<input placeholder="new value" id="' + ptInputId + '" type="text" style="margin-bottom: 0px; border-bottom-width: 0px">');
+
+
+              callbacks.push(() => {
+                  $('#' + ptInputId).change(() => {
+                      getCfg(streamId).pt = $('#' + ptInputId).val();
+                  });
+              })
+
+              const encMode = 'stream' + i + 'encryptionMode';
+              const encType = 'stream' + i + 'encryptionType';
+
+              addRow(table, 'Encryption',
+                  '<select class="browser-default" id="' + encMode + '">\n' +
+                  '<option value="" selected>Disable</option>\n' +
+                  '    <option value="1">Default</option>\n' +
+                  '    <option value="2">Unencrypted_SRTP</option>\n' +
+                  '    <option value="3">Unencrypted_SRTCP</option>\n' +
+                  '    <option value="3">Unauthenticated_SRTP</option>\n' +
+                  '</select>',
+                  '<select class="browser-default" id="' + encType + '">\n' +
+                  '<option value="" disabled selected>Choose your option</option>\n' +
+                  '    <option value="1">AES128_SHA1_32</option>\n' +
+                  '    <option value="2">AES128_SHA1_80</option>\n' +
+                  '    <option value="3">AES256_SHA1_32</option>\n' +
+                  '    <option value="3">AES256_SHA1_80</option>\n' +
+                  '</select>');
+
+              callbacks.push(() => {
+                  $('#' + encMode).change(() => {
+                      getCfg(streamId).encryptionMode = $('#' + encMode + ' option:selected').text();
+                  });
+              });
+
+              callbacks.push(() => {
+                 $('#' + encType).change(() => {
+                     getCfg(streamId).encryptionType = $('#' + encType + ' option:selected').text();
+                 });
+              });
+
+              const base64EncKeyInputId = 'stream' + i + 'base64enckey';
+              addRow(table, 'Encryption key',
+                  '<textarea placeholder="base64" id="' + base64EncKeyInputId + '" class="materialize-textarea">',
+                  '');
+
+              callbacks.push(() => {
+                  $('#' + base64EncKeyInputId).change(() => {
+                      getCfg(streamId).encryptionKey = $('#' + base64EncKeyInputId).val();
+                  })
+              })
+
+            }
+
+            $('#rtpDumpCfg').append(table);
+
+            // setup callbacks, they don't save before append
+            callbacks.forEach((cb) => { cb(); });
+         }
+
+         function setFileSelectMsg(text) {
+            $("#textSelectFile").html(text);
+         }
+
+         function setProcessMsg(text) {
+            $("#textProcess").html(text);  
+         }
+
+         function buildMsg(msg, error = false) {
+            let text;
+            if (error) {
+               text = '<span style="color:red">error: ' + msg + '</span>';
+            } else {
+               text = '<span style="color:purple">' + msg + '</span>';
+            }
+
+            return text;
+         }
+
+         function resetPageState() {
+            setFileSelectMsg("");
+            $("#buttonSelectFile").removeClass("disabled");
+
+            setProcessMsg("");
+            $("#buttonProcess").addClass("disabled");
+
+            $('#rtpDumpCfg').children().remove();
+
+            FileCfg = {};
+         }
+
+      </script> 
+   </body> 
+</html>
